@@ -3,7 +3,8 @@ import dotenv from "dotenv";
 
 dotenv.config();
 let shouldStop = false;
-
+let totalCameras = 0;
+let offlineCamerasCount = 0;
 const nvr = new Nvr({
   ip: process.env.NVR_IP,
   port: parseInt(process.env.NVR_PORT),
@@ -31,29 +32,21 @@ async function main() {
     //   enableTiming: true
     // }
 
-    const channels = await nvr.getChannelStatus();
     const cameras = await nvr.fetchChannels();
-
-    const logOfflineChannels = () => {
-      const onlineChannels = channels
-        .filter((channel) => channel.online === false)
-        .map(({ ip, online }) => ({ ip, online }));
-      if (onlineChannels.length > 0) {
-        console.log(
-          "Cameras status:",
-          onlineChannels.length > 0
-            ? () => {
-                onlineChannels.forEach((channel) => {
-                  const camera = cameras.find(
-                    (cam) => cam.address === channel.ip,
-                  );
-                  console.log(
-                    `Name camera offline - ${camera ? camera.name : channel.ip} (${channel.ip})`,
-                  );
-                });
-              }
-            : "All channels are online",
-        );
+    totalCameras = cameras.length;
+    const logOfflineChannels = async () => {
+      const channels = await nvr.getChannelStatus();
+      const offlineChannels = channels.filter((channel) => channel.online === false);
+      
+      if (offlineChannels.length > 0 && offlineChannels.length !== offlineCamerasCount) {
+        offlineCamerasCount = offlineChannels.length;
+        const messages = offlineChannels.map((channel) => {
+          const camera = cameras.find((cam) => cam.address === channel.ip);
+          return `Name camera offline - ${camera ? camera.name : channel.ip} (${channel.ip})`;
+        });
+        console.log("🕵️Cameras status:", messages);
+        console.log("💀Total offline cameras:", offlineChannels.length);
+        console.log("📷Total cameras:", totalCameras);
       }
     };
 
@@ -71,14 +64,15 @@ async function main() {
     }
 
     while (!shouldStop) {
-      logOfflineChannels();
+      await logOfflineChannels();
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     await nvr.disconnect();
-    process.exit(0);
   } catch (error) {
     console.error("❌ NVR connection failed:", error.message);
+  } finally {
+    process.exit(0);
   }
 }
 
